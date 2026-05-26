@@ -130,26 +130,41 @@ public final class NotificationDismissalModel: NotificationDismissing {
         let canDismissRestoredUnreadIndicator = context.canDismissRestoredUnreadIndicator &&
             (hasRestoredPanelUnread || hasRestoredWorkspaceUnread)
         let canDismissUnreadIndicator = canDismissManualUnreadIndicator || canDismissRestoredUnreadIndicator
+        let hasWorkspaceLevelUnread = host.storeHasUnreadNotification(workspaceId: workspaceId, surfaceId: nil)
+        let hasWorkspaceLevelFocused = host.storeHasVisibleNotificationIndicator(workspaceId: workspaceId, surfaceId: nil)
         let hasUnreadNotification: Bool
         let hasFocusedIndicator: Bool
         if notificationSurfaceIds.isEmpty {
-            hasUnreadNotification = host.storeHasUnreadNotification(workspaceId: workspaceId, surfaceId: nil)
-            hasFocusedIndicator = host.storeHasVisibleNotificationIndicator(workspaceId: workspaceId, surfaceId: nil)
+            hasUnreadNotification = hasWorkspaceLevelUnread
+            hasFocusedIndicator = hasWorkspaceLevelFocused
         } else {
             hasUnreadNotification = notificationSurfaceIds.contains {
                 host.storeHasUnreadNotification(workspaceId: workspaceId, surfaceId: $0)
-            }
+            } || hasWorkspaceLevelUnread
             hasFocusedIndicator = notificationSurfaceIds.contains {
                 host.storeHasVisibleNotificationIndicator(workspaceId: workspaceId, surfaceId: $0)
             }
         }
         guard hasUnreadNotification || hasFocusedIndicator || canDismissUnreadIndicator else { return false }
+        let hasSurfaceTargetedNotification: Bool
+        if notificationSurfaceIds.isEmpty {
+            hasSurfaceTargetedNotification = hasWorkspaceLevelUnread || hasWorkspaceLevelFocused
+        } else {
+            hasSurfaceTargetedNotification = notificationSurfaceIds.contains {
+                host.storeHasUnreadNotification(workspaceId: workspaceId, surfaceId: $0)
+            } || notificationSurfaceIds.contains {
+                host.storeHasVisibleNotificationIndicator(workspaceId: workspaceId, surfaceId: $0)
+            }
+        }
         if hasUnreadNotification {
             if notificationSurfaceIds.isEmpty {
                 host.storeMarkRead(workspaceId: workspaceId, surfaceId: nil)
             } else {
                 for surfaceId in notificationSurfaceIds {
                     host.storeMarkRead(workspaceId: workspaceId, surfaceId: surfaceId)
+                }
+                if hasWorkspaceLevelUnread {
+                    host.storeMarkRead(workspaceId: workspaceId, surfaceId: nil)
                 }
             }
         }
@@ -179,9 +194,12 @@ public final class NotificationDismissalModel: NotificationDismissing {
             for surfaceId in notificationSurfaceIds {
                 host.storeClearFocusedReadIndicator(workspaceId: workspaceId, surfaceId: surfaceId)
             }
+            if hasWorkspaceLevelFocused {
+                host.storeClearFocusedReadIndicator(workspaceId: workspaceId, surfaceId: nil)
+            }
         }
         if let targetPanelId {
-            if hasUnreadNotification || hasFocusedIndicator {
+            if hasSurfaceTargetedNotification {
                 host.workspaceTriggerNotificationDismissFlash(workspaceId: workspaceId, panelId: targetPanelId)
             } else if didDismissUnreadIndicator {
                 host.workspaceTriggerUnreadIndicatorDismissFlash(workspaceId: workspaceId, panelId: targetPanelId)
