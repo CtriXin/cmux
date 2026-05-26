@@ -19563,6 +19563,8 @@ struct CMUXCLI {
                         isRestorable: true,
                         lastSubtitle: completion?.subtitle,
                         lastBody: completion?.body,
+                        runtimeStatus: .idle,
+                        updateRuntimeStatus: true,
                         markActive: true,
                         allowsNewSessionReplacement: true
                     )
@@ -19655,6 +19657,8 @@ struct CMUXCLI {
                     cwd: parsedInput.cwd,
                     transcriptPath: parsedInput.transcriptPath,
                     isRestorable: true,
+                    runtimeStatus: .running,
+                    updateRuntimeStatus: true,
                     markActive: true,
                     turnId: parsedInput.turnId
                 )
@@ -19708,6 +19712,13 @@ struct CMUXCLI {
             }
             guard !suppressVisibleMutations else {
                 telemetry.breadcrumb("claude-hook.notification.nested-suppressed")
+                print("OK")
+                return
+            }
+            if let mappedSession,
+               mappedSession.runtimeStatus == .idle,
+               isGenericClaudeNeedsInputNotification(summary: summary) {
+                telemetry.breadcrumb("claude-hook.notification.stale-idle")
                 print("OK")
                 return
             }
@@ -21992,6 +22003,21 @@ struct CMUXCLI {
 
         classified.body = truncate(classified.body, maxLength: 180)
         return classified
+    }
+
+    private func isGenericClaudeNeedsInputNotification(summary: (subtitle: String, body: String)) -> Bool {
+        let combined = "\(summary.subtitle) \(summary.body)".trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !combined.isEmpty else { return true }
+        let normalized = combined.lowercased()
+        let genericPhrases = [
+            "claude is waiting for your input",
+            "claude needs your input",
+            "claude code needs your attention",
+            "needs your attention",
+            "needs your input",
+            "waiting for your input"
+        ]
+        return genericPhrases.contains { normalized.contains($0) }
     }
 
     private func summarizeAgentHookNotification(

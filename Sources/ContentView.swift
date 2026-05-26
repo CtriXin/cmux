@@ -10180,6 +10180,51 @@ struct VerticalTabsSidebar: View {
         workspace.currentDirectory.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
     }
 
+    private func extensionBrowserStackTooltip(for row: CmuxExtensionSidebarRenderRow) -> String {
+        guard let snapshot = extensionWorkspaceSnapshot(for: row.workspaceId) else {
+            return row.title
+        }
+
+        if snapshot.unreadCount > 0,
+           let notificationText = snapshot.latestNotificationText?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !notificationText.isEmpty {
+            if let notification = notificationStore.latestUnreadNotification(forTabId: row.workspaceId) {
+                let notificationTitle = notification.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                let titlePrefix = notificationTitle.isEmpty ? "" : "\(notificationTitle): "
+                return "\(row.title) - Unread: \(titlePrefix)\(notificationText)"
+            }
+            return "\(row.title) - Unread: \(notificationText)"
+        }
+
+        if let notificationText = snapshot.latestNotificationText?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !notificationText.isEmpty {
+            return "\(row.title) - \(notificationText)"
+        }
+
+        if let fullPath = extensionBrowserStackFullPath(from: snapshot) {
+            return "\(row.title) - \(fullPath)"
+        }
+
+        if snapshot.rootPath?.trimmingCharacters(in: .whitespacesAndNewlines) == "~" {
+            return "\(row.title) - Home (~)"
+        }
+
+        return row.title
+    }
+
+    private func extensionBrowserStackFullPath(from snapshot: CmuxExtensionWorkspaceSnapshot) -> String? {
+        let rootPath = snapshot.rootPath?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let rootPath, rootPath.hasPrefix("/"), rootPath != "/" {
+            return rootPath
+        }
+        if let directory = snapshot.panelDirectories
+            .map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+            .first(where: { $0.hasPrefix("/") && $0 != "/" }) {
+            return directory
+        }
+        return nil
+    }
+
     private func extensionBrowserStackSidebar(
         model: CmuxExtensionSidebarRenderModel,
         now: Date
@@ -10344,7 +10389,7 @@ struct VerticalTabsSidebar: View {
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity)
-        .safeHelp(row.title)
+        .safeHelp(extensionBrowserStackTooltip(for: row))
         .opacity(draggedTabId == row.workspaceId ? 0.55 : 1)
         .onDrag {
             draggedTabId = row.workspaceId
@@ -10424,6 +10469,7 @@ struct VerticalTabsSidebar: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .safeHelp(extensionBrowserStackTooltip(for: row))
         .opacity(draggedTabId == row.workspaceId ? 0.55 : 1)
         .onDrag {
             draggedTabId = row.workspaceId
@@ -10704,6 +10750,16 @@ struct VerticalTabsSidebar: View {
 
     private func selectExtensionSidebarWorkspace(_ workspaceId: UUID) {
         guard let workspace = tabManager.tabs.first(where: { $0.id == workspaceId }) else { return }
+        if let notification = notificationStore.latestUnreadNotification(forTabId: workspaceId) {
+            let targetSurfaceId = notification.panelId ?? notification.surfaceId
+            if tabManager.focusTabFromNotification(workspaceId, surfaceId: targetSurfaceId) {
+                selection = .tabs
+                selectedTabIds = [workspaceId]
+                lastSidebarSelectionIndex = tabManager.tabs.firstIndex { $0.id == workspaceId }
+                return
+            }
+        }
+
         selection = .tabs
         selectedTabIds = [workspaceId]
         lastSidebarSelectionIndex = tabManager.tabs.firstIndex { $0.id == workspaceId }
@@ -14112,7 +14168,7 @@ private struct TabItemView: View, Equatable {
         .onTapGesture {
             updateSelection()
         }
-        .safeHelp(workspaceSnapshot.title)
+        .safeHelp(workspaceTooltipText)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(accessibilityTitle))
         .accessibilityHint(Text(accessibilityHintText))
@@ -14517,6 +14573,32 @@ private struct TabItemView: View, Equatable {
         setSelectionToTabs()
     }
 
+    private var workspaceTooltipText: String {
+        var lines: [String] = []
+        let notificationText = latestNotificationText?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
+
+        if unreadCount > 0 {
+            if let notificationText {
+                lines.append("Unread: \(notificationText)")
+            } else {
+                lines.append(unreadCount == 1 ? "Unread" : "Unread (\(unreadCount))")
+            }
+        } else if let notificationText {
+            lines.append(notificationText)
+        }
+
+        if let fullPath = WorkspaceFinderDirectoryResolver.path(for: tab)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty {
+            lines.append(fullPath)
+        }
+
+        lines.append(workspaceSnapshot.title)
+        return lines.joined(separator: "\n")
+    }
+
     private func updateSelection() {
         #if DEBUG
         let mods = NSEvent.modifierFlags
@@ -14549,6 +14631,14 @@ private struct TabItemView: View, Equatable {
             }
         } else {
             selectedTabIds = [tab.id]
+            if let notification = notificationStore.latestUnreadNotification(forTabId: tab.id) {
+                let targetSurfaceId = notification.panelId ?? notification.surfaceId
+                if tabManager.focusTabFromNotification(tab.id, surfaceId: targetSurfaceId) {
+                    lastSidebarSelectionIndex = index
+                    setSelectionToTabs()
+                    return
+                }
+            }
         }
 
         lastSidebarSelectionIndex = index
