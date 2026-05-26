@@ -1255,6 +1255,7 @@ struct BrowserPanelView: View {
                     browserProfileButton
                     browserThemeModeButton
                     developerToolsButton
+                    openInExternalBrowserButton
                 }
             }
         }
@@ -1540,6 +1541,14 @@ struct BrowserPanelView: View {
                 )
             }
 
+            Button(action: openInExternalBrowser) {
+                Label(
+                    String(localized: "browser.openInDefaultBrowser", defaultValue: "Open in Default Browser"),
+                    systemImage: "arrow.up.forward.app"
+                )
+            }
+            .disabled(panel.preferredURLStringForOmnibar() == nil)
+
             Button(action: { openDevTools() }) {
                 Label(developerToolsButtonHelp, systemImage: devToolsIconOption.rawValue)
             }
@@ -1584,6 +1593,26 @@ struct BrowserPanelView: View {
             )
         )
         .accessibilityIdentifier("BrowserThemeModeButton")
+    }
+
+    private var openInExternalBrowserButton: some View {
+        let hasURL = panel.preferredURLStringForOmnibar() != nil
+        return Button(action: {
+            openInExternalBrowser()
+        }) {
+            Image(systemName: "arrow.up.forward.app")
+                .symbolRenderingMode(.monochrome)
+                .cmuxFlatSymbolColorRendering()
+                .font(.system(size: devToolsButtonIconSize, weight: .medium))
+                .foregroundStyle(Color.secondary)
+                .frame(width: addressBarButtonSize, height: addressBarButtonSize, alignment: .center)
+        }
+        .buttonStyle(OmnibarAddressButtonStyle())
+        .frame(width: addressBarButtonSize, height: addressBarButtonSize, alignment: .center)
+        .safeHelp("Open in Default Browser")
+        .accessibilityIdentifier("BrowserOpenInExternalBrowserButton")
+        .disabled(!hasURL)
+        .opacity(hasURL ? 1 : 0.4)
     }
 
     private var browserImportHintToolbarChip: some View {
@@ -2462,6 +2491,15 @@ struct BrowserPanelView: View {
         if !panel.toggleDeveloperTools() {
             NSSound.beep()
         }
+    }
+
+    private func openInExternalBrowser() {
+        guard let urlString = panel.preferredURLStringForOmnibar(),
+              let url = URL(string: urlString) else { return }
+#if DEBUG
+        cmuxDebugLog("browser.openInExternalBrowser panel=\(panel.id.uuidString.prefix(5)) url=\(url.absoluteString)")
+#endif
+        NSWorkspace.shared.open(url)
     }
 
     private func applyBrowserThemeModeSelection(_ mode: BrowserThemeMode) {
