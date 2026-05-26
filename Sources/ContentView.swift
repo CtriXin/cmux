@@ -10191,9 +10191,15 @@ struct VerticalTabsSidebar: View {
             if let notification = notificationStore.latestUnreadNotification(forTabId: row.workspaceId) {
                 let notificationTitle = notification.title.trimmingCharacters(in: .whitespacesAndNewlines)
                 let titlePrefix = notificationTitle.isEmpty ? "" : "\(notificationTitle): "
-                return "\(row.title) - Unread: \(titlePrefix)\(notificationText)"
+                return String(
+                    localized: "workspace.row.unread.titleAndNotification",
+                    defaultValue: "\(row.title) - Unread: \(titlePrefix)\(notificationText)"
+                )
             }
-            return "\(row.title) - Unread: \(notificationText)"
+            return String(
+                localized: "workspace.row.unread.notification",
+                defaultValue: "\(row.title) - Unread: \(notificationText)"
+            )
         }
 
         if let notificationText = snapshot.latestNotificationText?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -14581,9 +14587,21 @@ private struct TabItemView: View, Equatable {
 
         if unreadCount > 0 {
             if let notificationText {
-                lines.append("Unread: \(notificationText)")
+                lines.append(
+                    String(
+                        localized: "workspace.tooltip.unread.notification",
+                        defaultValue: "Unread: \(notificationText)"
+                    )
+                )
             } else {
-                lines.append(unreadCount == 1 ? "Unread" : "Unread (\(unreadCount))")
+                lines.append(
+                    unreadCount == 1
+                        ? String(localized: "workspace.tooltip.unread.single", defaultValue: "Unread")
+                        : String(
+                            localized: "workspace.tooltip.unread.multiple",
+                            defaultValue: "Unread (\(unreadCount))"
+                        )
+                )
             }
         } else if let notificationText {
             lines.append(notificationText)
