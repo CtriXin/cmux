@@ -985,8 +985,8 @@ final class TerminalNotificationStore: ObservableObject {
 
             source.setEventHandler { [weak self] in
                 guard let self else { return }
-                // Dispatch scan to main actor to match the original MainActor context.
-                // The poll function itself is async-safe and runs off-main internally.
+                // Re-evaluate the watch topology after each event so deleted/recreated
+                // OpenCode directories get watched again without relying on timer churn.
                 Task { @MainActor in
                     let currentSocketPath = TerminalController.shared.activeSocketPath(
                         preferredPath: SocketControlSettings.socketPath()
@@ -994,6 +994,7 @@ final class TerminalNotificationStore: ObservableObject {
                     await RestorableAgentSessionIndex.pollOpenCodeCompletionNotifications(
                         currentSocketPath: currentSocketPath
                     )
+                    self.startOpenCodeCompletionPolling()
                 }
             }
 
