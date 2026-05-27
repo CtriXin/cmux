@@ -1263,7 +1263,7 @@ final class TerminalNotificationStore: ObservableObject {
 
     func hasVisibleNotificationIndicator(forTabId tabId: UUID, surfaceId: UUID?) -> Bool {
         hasUnreadNotification(forTabId: tabId, surfaceId: surfaceId) ||
-            focusedReadIndicatorByTabId[tabId] == surfaceId
+            (focusedReadIndicatorByTabId[tabId].map { $0 == surfaceId } ?? false)
     }
 
     func latestNotification(forTabId tabId: UUID) -> TerminalNotification? {
@@ -1698,6 +1698,22 @@ final class TerminalNotificationStore: ObservableObject {
         center.removeDeliveredNotificationsOffMain(withIdentifiers: [id.uuidString])
     }
 
+    func markUnread(id: UUID) {
+        var updated = notifications
+        guard let index = updated.firstIndex(where: { $0.id == id }) else { return }
+        guard updated[index].isRead else { return }
+        let tabId = updated[index].tabId
+        updated[index].isRead = false
+        notifications = updated
+        // The notification itself now provides the workspace unread indicator. Clear any
+        // existing manual or restored workspace unread state for the same tab so we don't
+        // double-count it. (Mirrors what markLatestNotificationAsOldestUnread does for the
+        // manual flag — restored hints are a one-time signal from a previous session and
+        // should also defer to the concrete unread notification.)
+        setWorkspaceManualUnread(false, forTabId: tabId)
+        setWorkspaceRestoredUnread(false, forTabId: tabId)
+    }
+
     func markRead(forTabId tabId: UUID) {
         var updated = notifications
         var idsToClear: [String] = []
@@ -1710,6 +1726,7 @@ final class TerminalNotificationStore: ObservableObject {
         if !idsToClear.isEmpty {
             notifications = updated
         }
+        clearFocusedReadIndicator(forTabId: tabId)
         setWorkspaceManualUnread(false, forTabId: tabId)
         clearWorkspacePanelUnread(forTabId: tabId)
         setPanelDerivedWorkspaceUnread(false, forTabId: tabId)
@@ -1732,6 +1749,7 @@ final class TerminalNotificationStore: ObservableObject {
         if !idsToClear.isEmpty {
             notifications = updated
         }
+        clearFocusedReadIndicator(forTabId: tabId, surfaceId: surfaceId)
         if surfaceId == nil {
             clearWorkspacePanelUnread(forTabId: tabId)
             setPanelDerivedWorkspaceUnread(false, forTabId: tabId)
@@ -1752,7 +1770,7 @@ final class TerminalNotificationStore: ObservableObject {
     func markLatestNotificationAsOldestUnread(forTabId tabId: UUID, surfaceId: UUID?) -> UUID? {
         var updated = notifications
         guard let index = latestNotificationIndex(forTabId: tabId, surfaceId: surfaceId, in: updated) else {
-            if !workspaceIsUnread(forTabId: tabId) {
+            if surfaceId == nil, !workspaceIsUnread(forTabId: tabId) {
                 setWorkspaceManualUnread(true, forTabId: tabId)
             }
             return nil
