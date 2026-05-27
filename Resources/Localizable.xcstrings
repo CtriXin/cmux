@@ -92545,19 +92545,19 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "localhost:%lldを開く"
+            "value": "このワークスペースで待ち受けポートを検出しました。クリックして http://localhost:%lld を開きます。ソース: ローカルプロセス。"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Відкрити localhost:%lld"
+            "value": "Для цього робочого простору виявлено порт прослуховування. Натисніть, щоб відкрити http://localhost:%lld. Джерело: локальний процес."
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "localhost:%lld 열기"
+            "value": "이 워크스페이스에서 수신 포트가 감지되었습니다. 클릭하여 http://localhost:%lld 를 엽니다. 출처: 로컬 프로세스."
           }
         }
       }
