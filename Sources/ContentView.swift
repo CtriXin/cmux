@@ -11557,7 +11557,10 @@ struct VerticalTabsSidebar: View {
         }
 
         if snapshot.rootPath?.trimmingCharacters(in: .whitespacesAndNewlines) == "~" {
-            return "\(row.title) - Home (~)"
+            return String(
+                format: String(localized: "workspace.row.tooltip.homeDirectory", defaultValue: "%@ - Home (~)"),
+                row.title
+            )
         }
 
         return row.title
