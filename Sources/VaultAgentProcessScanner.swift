@@ -105,6 +105,11 @@ extension RestorableAgentSessionIndex {
             capturedAt: capturedAt,
             fileManager: fileManager
         )
+        if !openCodeResult.perPanelDBURLs.isEmpty {
+            DispatchQueue.main.async {
+                TerminalNotificationStore.shared.refreshOpenCodeCompletionWatchersFromLiveProcesses()
+            }
+        }
         var resolved = openCodeResult.resolved
 
         guard !registry.registrations.isEmpty else { return resolved }
@@ -194,6 +199,33 @@ extension RestorableAgentSessionIndex {
         )
         await openCodeCompletionTracker.endPolling()
     }
+
+    /// Returns standardized parent directories of per-panel OpenCode MMS DB URLs
+    /// discovered from child-process environment variables.
+    /// Only directories that exist on disk are included; results are deduplicated and sorted.
+    /// No notification processing, tracker state, or timers are touched.
+    static func liveOpenCodeDatabaseDirectories(
+        currentSocketPath: String? = nil,
+        fileManager: FileManager = .default
+    ) -> [String] {
+        let processSnapshot = CmuxTopProcessSnapshot.capture(includeProcessDetails: true)
+        let capturedAt = Date().timeIntervalSince1970
+        let result = processDetectedOpenCodeSnapshots(
+            processSnapshot: processSnapshot,
+            capturedAt: capturedAt,
+            fileManager: fileManager,
+            currentSocketPath: currentSocketPath
+        )
+        var directories = Set<String>()
+        for dbURL in result.perPanelDBURLs.values {
+            let dir = dbURL.deletingLastPathComponent().path
+            let standardized = (dir as NSString).standardizingPath
+            guard fileManager.fileExists(atPath: standardized) else { continue }
+            directories.insert(standardized)
+        }
+        return directories.sorted()
+    }
+
     static func processLooksLikeOpenCode(
         processName: String,
         processPath: String?,
