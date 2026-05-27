@@ -22252,7 +22252,7 @@ struct CMUXCLI {
 
     private func isGenericClaudeNeedsInputNotification(summary: (subtitle: String, body: String)) -> Bool {
         let combined = "\(summary.subtitle) \(summary.body)".trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !combined.isEmpty else { return true }
+        guard !combined.isEmpty else { return false }
         let normalized = combined.lowercased()
         let genericPhrases = [
             "claude is waiting for your input",
@@ -22260,7 +22260,14 @@ struct CMUXCLI {
             "claude code needs your attention",
             "needs your attention",
             "needs your input",
-            "waiting for your input"
+            "waiting for your input",
+            "waiting for input",
+            "requires input",
+            "requires your input",
+            "approval required",
+            "permission required",
+            "confirm",
+            "continue?"
         ]
         return genericPhrases.contains { normalized.contains($0) }
     }

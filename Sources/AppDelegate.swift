@@ -1698,6 +1698,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
         ghosttyCrashBreadcrumbTask?.cancel()
         ghosttyCrashBreadcrumbTask = nil
+        notificationStore?.invalidateOpenCodeCompletionWatchers()
         notificationStore?.clearAll()
         GhosttyCrashBreadcrumb.markCleanExit()
         StartupBreadcrumbLog.append("appDelegate.willTerminate.complete")

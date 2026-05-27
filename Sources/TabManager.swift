@@ -6929,7 +6929,7 @@ class TabManager: ObservableObject {
             } || hasWorkspaceLevelUnread
             hasFocusedIndicator = notificationSurfaceIds.contains {
                 notificationStore.hasVisibleNotificationIndicator(forTabId: tabId, surfaceId: $0)
-            }
+            } || hasWorkspaceLevelFocused
         }
         guard hasUnreadNotification || hasFocusedIndicator || canDismissUnreadIndicator else { return false }
         let hasSurfaceTargetedNotification: Bool
@@ -6940,7 +6940,7 @@ class TabManager: ObservableObject {
                 notificationStore.hasUnreadNotification(forTabId: tabId, surfaceId: $0)
             } || notificationSurfaceIds.contains {
                 notificationStore.hasVisibleNotificationIndicator(forTabId: tabId, surfaceId: $0)
-            }
+            } || hasWorkspaceLevelUnread || hasWorkspaceLevelFocused
         }
         if hasUnreadNotification {
             if notificationSurfaceIds.isEmpty {

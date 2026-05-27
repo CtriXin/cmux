@@ -5054,6 +5054,20 @@ enum PreferredEditorSettings {
     }
 }
 
+enum CmuxUI {
+    /// Opens a URL through one shared UI path so tests can capture external launches.
+    @discardableResult
+    static func open(_ url: URL) -> Bool {
+        if CmuxUITestCapture.appendLineIfConfigured(
+            envKey: "CMUX_UI_TEST_CAPTURE_OPEN_URL",
+            line: url.absoluteString
+        ) {
+            return true
+        }
+        return NSWorkspace.shared.open(url)
+    }
+}
+
 enum CmuxUITestCapture {
     static func appendLineIfConfigured(envKey: String, line: String) -> Bool {
         guard let url = configuredURL(for: envKey) else { return false }

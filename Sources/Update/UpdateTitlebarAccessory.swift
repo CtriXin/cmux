@@ -325,11 +325,16 @@ private extension TerminalNotification {
             return .needsInput
         }
 
-        if combinedText.localizedCaseInsensitiveContains("completed") ||
-            combinedText.localizedCaseInsensitiveContains("complete") ||
-            combinedText.localizedCaseInsensitiveContains("done") ||
-            combinedText.localizedCaseInsensitiveContains("finished") ||
-            combinedText.localizedCaseInsensitiveContains("exited") {
+        let completedPatterns = [
+            #"\bcompleted\b"#,
+            #"\bcomplete\b"#,
+            #"\bdone\b"#,
+            #"\bfinished\b"#,
+            #"\bexited\b"#,
+        ]
+        if completedPatterns.contains(where: {
+            combinedText.range(of: $0, options: [.regularExpression, .caseInsensitive]) != nil
+        }) {
             return .completed
         }
 
@@ -868,9 +873,15 @@ struct TitlebarControlsView: View {
         )
         let count = notificationStore.unreadCount
         guard count > 0, let latest = notificationStore.notifications.first else { return base }
-        return String(
-            localized: "titlebar.notifications.tooltip.unread.latest",
-            defaultValue: "\(base) — \(count) unread. Latest: \(latest.title). \(latest.tooltipStatusText)"
+        return String.localizedStringWithFormat(
+            String(
+                localized: "titlebar.notifications.tooltip.unread.latest",
+                defaultValue: "%@ — %lld unread. Latest: %@. %@"
+            ),
+            base,
+            count,
+            latest.title,
+            latest.tooltipStatusText
         )
     }
 

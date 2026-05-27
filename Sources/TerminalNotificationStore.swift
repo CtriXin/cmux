@@ -840,17 +840,13 @@ final class TerminalNotificationStore: ObservableObject {
     /// On each event the handler re-scans the existing completion-detection path.
     private var openCodeWatchSources: [DispatchSourceFileSystemObject] = []
     private var openCodeWatchDirectorySet: Set<String> = []
+    private var openCodeWatchDiscoveryTask: Task<Void, Never>?
 
-    /// Serial queue for re-arming watches on directories that don't yet exist.
-    /// Uses a bounded asyncAfter instead of a repeating timer.
+    /// Serial queue for filesystem events from watched OpenCode DB directories.
     private static let openCodeWatchRearmQueue = DispatchQueue(
         label: "com.cmuxterm.opencode-fswatch-rearm",
         qos: .utility
     )
-    /// Guards the one-shot re-arm so the asyncAfter retry fires at most once per app lifetime.
-    /// Reset to false when watchers are successfully created so that a future directory
-    /// creation can trigger exactly one more retry if needed.
-    private var didScheduleOpenCodeWatchRearm = false
     private var indexes = NotificationIndexes()
 
     private init() {
@@ -867,20 +863,14 @@ final class TerminalNotificationStore: ObservableObject {
         startOpenCodeCompletionPolling()
     }
 
-    deinit {
-        if let userDefaultsObserver {
-            NotificationCenter.default.removeObserver(userDefaultsObserver)
-        }
-        for source in openCodeWatchSources {
-            source.cancel()
-        }
-        openCodeWatchSources.removeAll()
-        openCodeWatchFDs.removeAll()
-        openCodeWatchDirectorySet.removeAll()
-    }
-
     func refreshOpenCodeCompletionWatchersFromLiveProcesses() {
         startOpenCodeCompletionPolling()
+    }
+
+    func invalidateOpenCodeCompletionWatchers() {
+        openCodeWatchDiscoveryTask?.cancel()
+        openCodeWatchDiscoveryTask = nil
+        cancelOpenCodeCompletionWatchers(clearDirectorySet: true)
     }
 
     private func cancelOpenCodeCompletionWatchers(clearDirectorySet: Bool) {
@@ -906,26 +896,56 @@ final class TerminalNotificationStore: ObservableObject {
     ///   - $MMS_SESSION_HOME/.local/share/opencode/ (app process env)
     ///   - child-process MMS directories discovered from live process scan (per-panel DB parent dirs)
     private func startOpenCodeCompletionPolling() {
-        let fm = FileManager.default
         let homeDir = NSHomeDirectory()
         let currentSocketPath = TerminalController.shared.activeSocketPath(
             preferredPath: SocketControlSettings.socketPath()
         )
+        let environment = ProcessInfo.processInfo.environment
 
+        openCodeWatchDiscoveryTask?.cancel()
+        openCodeWatchDiscoveryTask = Task { [weak self, homeDir, environment, currentSocketPath] in
+            let watchDirectories = await Task.detached(priority: .utility) {
+                Self.openCodeWatchDirectories(
+                    homeDir: homeDir,
+                    environment: environment,
+                    currentSocketPath: currentSocketPath
+                )
+            }.value
+            guard !Task.isCancelled else { return }
+            self?.applyOpenCodeCompletionWatchDirectories(watchDirectories)
+        }
+    }
+
+    nonisolated private static func openCodeWatchDirectories(
+        homeDir: String,
+        environment: [String: String],
+        currentSocketPath: String?,
+        fileManager fm: FileManager = .default
+    ) -> [String] {
         var watchDirectories: [String] = []
+
+        func appendWatchDirectory(forOpenCodeDir directory: String) {
+            let resolvedDir = (directory as NSString).standardizingPath
+            if fm.fileExists(atPath: resolvedDir) {
+                watchDirectories.append(resolvedDir)
+                return
+            }
+            let parent = ((resolvedDir as NSString).deletingLastPathComponent as NSString).standardizingPath
+            if fm.fileExists(atPath: parent) {
+                watchDirectories.append(parent)
+            }
+        }
+
         let defaultDir = (homeDir as NSString).appendingPathComponent(".local/share/opencode")
         let resolvedDefaultDir = (defaultDir as NSString).standardizingPath
-        if fm.fileExists(atPath: defaultDir) {
-            watchDirectories.append(resolvedDefaultDir)
-        }
-        if let mmsHome = ProcessInfo.processInfo.environment["MMS_SESSION_HOME"]?
+        appendWatchDirectory(forOpenCodeDir: resolvedDefaultDir)
+        if let mmsHome = environment["MMS_SESSION_HOME"]?
             .trimmingCharacters(in: .whitespacesAndNewlines),
            !mmsHome.isEmpty {
             let mmsDir = (mmsHome as NSString).appendingPathComponent(".local/share/opencode")
             let resolvedMmsDir = (mmsDir as NSString).standardizingPath
-            if fm.fileExists(atPath: resolvedMmsDir),
-               resolvedMmsDir != resolvedDefaultDir {
-                watchDirectories.append(resolvedMmsDir)
+            if resolvedMmsDir != resolvedDefaultDir {
+                appendWatchDirectory(forOpenCodeDir: resolvedMmsDir)
             }
         }
         // Child-process MMS directories discovered from process scanning.
@@ -940,7 +960,10 @@ final class TerminalNotificationStore: ObservableObject {
             watchDirectories.append(standardized)
         }
         // Deduplicate by standardized path (stable sorted order).
-        watchDirectories = Array(Set(watchDirectories)).sorted()
+        return Array(Set(watchDirectories)).sorted()
+    }
+
+    private func applyOpenCodeCompletionWatchDirectories(_ watchDirectories: [String]) {
         let nextSet = Set(watchDirectories)
         if nextSet == openCodeWatchDirectorySet, !openCodeWatchSources.isEmpty {
             return
@@ -948,25 +971,11 @@ final class TerminalNotificationStore: ObservableObject {
 
         if watchDirectories.isEmpty {
             cancelOpenCodeCompletionWatchers(clearDirectorySet: true)
-            // Bounded re-arm: directories don't exist yet. Retry at most once after 10 seconds.
-            // If the retry also finds no directories, it returns without scheduling again.
-            guard !didScheduleOpenCodeWatchRearm else { return }
-            didScheduleOpenCodeWatchRearm = true
-            Self.openCodeWatchRearmQueue.asyncAfter(deadline: .now() + 10.0) { [weak self] in
-                guard let self else { return }
-                DispatchQueue.main.async {
-                    self.startOpenCodeCompletionPolling()
-                }
-            }
             return
         }
 
         // Cancel any existing watchers only when the directory topology changed.
         cancelOpenCodeCompletionWatchers(clearDirectorySet: false)
-
-        // Watchers created successfully — allow a future retry if directories disappear
-        // and reappear (e.g. user installs OpenCode after app launch).
-        didScheduleOpenCodeWatchRearm = false
 
         var watchedDirectories = Set<String>()
         for directoryPath in watchDirectories {

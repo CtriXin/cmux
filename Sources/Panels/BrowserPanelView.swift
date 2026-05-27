@@ -2088,9 +2088,14 @@ struct BrowserPanelView: View {
         guard let urlString = panel.preferredURLStringForOmnibar(),
               let url = URL(string: urlString) else { return }
 #if DEBUG
-        cmuxDebugLog("browser.openInExternalBrowser panel=\(panel.id.uuidString.prefix(5)) url=\(url.absoluteString)")
+        let scheme = url.scheme ?? "unknown"
+        let host = url.host ?? "unknown"
+        cmuxDebugLog(
+            "browser.openInExternalBrowser panel=\(panel.id.uuidString.prefix(5)) " +
+            "scheme=\(scheme) host=\(host) urlLength=\(urlString.count)"
+        )
 #endif
-        NSWorkspace.shared.open(url)
+        CmuxUI.open(url)
     }
 
     private func applyBrowserThemeModeSelection(_ mode: BrowserThemeMode) {
