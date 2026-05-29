@@ -3263,17 +3263,23 @@ class GhosttyApp {
             let title = action.action.set_title.title
                 .flatMap { String(cString: $0) } ?? ""
             if let tabId = surfaceView.tabId,
-               let surfaceId = surfaceView.terminalSurface?.id {
+               let terminalSurface = surfaceView.terminalSurface {
+                let surfaceId = terminalSurface.id
                 DispatchQueue.main.async {
-                    NotificationCenter.default.post(
-                        name: .ghosttyDidSetTitle,
-                        object: surfaceView,
-                        userInfo: [
-                            GhosttyNotificationKey.tabId: tabId,
-                            GhosttyNotificationKey.surfaceId: surfaceId,
-                            GhosttyNotificationKey.title: title,
-                        ]
-                    )
+                    MainActor.assumeIsolated {
+                        guard let publishedTitle = terminalSurface.publishableTerminalTitle(title) else {
+                            return
+                        }
+                        NotificationCenter.default.post(
+                            name: .ghosttyDidSetTitle,
+                            object: surfaceView,
+                            userInfo: [
+                                GhosttyNotificationKey.tabId: tabId,
+                                GhosttyNotificationKey.surfaceId: surfaceId,
+                                GhosttyNotificationKey.title: publishedTitle,
+                            ]
+                        )
+                    }
                 }
             }
             return true
