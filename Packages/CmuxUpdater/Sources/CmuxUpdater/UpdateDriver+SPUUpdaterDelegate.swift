@@ -58,9 +58,17 @@ extension UpdateDriver: @preconcurrency SPUUpdaterDelegate {
     }
 
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
-        model.recordDetectedUpdate(item)
         let version = item.displayVersionString
         let fileURL = item.fileURL?.absoluteString ?? ""
+        let bundleIdentifier = Bundle.main.bundleIdentifier
+        let isDevBuild = UpdateBuildKind.isDebugLikeBundleIdentifier(bundleIdentifier)
+            || UpdateBuildKind.isStagingBundleIdentifier(bundleIdentifier)
+        if isDevBuild {
+            log.append("valid update suppressed for dev build: \(version) (bundle=\(bundleIdentifier ?? "nil"))")
+            model.clearDetectedUpdate()
+        } else {
+            model.recordDetectedUpdate(item)
+        }
         if fileURL.isEmpty {
             log.append("valid update found: \(version)")
         } else {

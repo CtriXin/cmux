@@ -343,6 +343,15 @@ public final class UpdateController {
             return
         }
 
+        let bundleIdentifier = hostBundle.bundleIdentifier
+        if UpdateBuildKind.isDebugLikeBundleIdentifier(bundleIdentifier)
+            || UpdateBuildKind.isStagingBundleIdentifier(bundleIdentifier) {
+            log.append("launch update probe skipped (dev build, bundle=\(bundleIdentifier ?? "nil"))")
+            backgroundProbeTask?.cancel()
+            backgroundProbeTask = nil
+            return
+        }
+
         // Probe immediately on launch so the sidebar can surface a passive update indicator
         // without waiting for Sparkle's scheduled check or opening interactive update UI.
         log.append("starting launch update probe")
