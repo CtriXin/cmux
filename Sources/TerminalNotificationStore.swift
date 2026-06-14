@@ -5,6 +5,7 @@ import os
 import UserNotifications
 import Bonsplit
 import CmuxSettings
+import CmuxSocketControl
 
 nonisolated private let terminalNotificationLogger = Logger(
     subsystem: "com.cmuxterm.app",

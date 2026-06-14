@@ -42,7 +42,7 @@ extension TabManager {
         return tab.title
     }
 
-    private func windowTitle(for tab: Workspace?) -> String {
+    func windowTitle(for tab: Workspace?) -> String {
         let defaultTitle = defaultWindowTitle(for: tab)
         guard let windowId, let template = WindowTitleTemplate.configured() else { return defaultTitle }
 

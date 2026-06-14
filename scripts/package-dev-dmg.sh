@@ -74,7 +74,7 @@ if [[ -z "$APP_TAG" || "$APP_TAG" == "$APP_BASENAME" ]]; then
 fi
 
 SHORT_SHA=""
-if command -v git >/dev/null 2>&1 && [[ -d "$REPO_ROOT/.git" ]]; then
+if command -v git >/dev/null 2>&1; then
   SHORT_SHA=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || true)
 fi
 SUFFIX="${APP_TAG}"
@@ -114,8 +114,15 @@ README
 # Re-sign ad-hoc inside the staging copy so Gatekeeper does not complain on
 # double-click; the staged .app was copied and may have lost its signature.
 xattr -cr "$STAGED_APP" 2>/dev/null || true
-if /usr/bin/codesign --force --sign - --timestamp=none --generate-entitlement-der \
-     --entitlements "$REPO_ROOT/cmux/cmux.entitlements" "$STAGED_APP" 2>/dev/null; then
+ENTITLEMENTS_PATH=""
+for candidate in "$REPO_ROOT/cmux.entitlements" "$REPO_ROOT/Resources/cmux.entitlements"; do
+  if [[ -f "$candidate" ]]; then
+    ENTITLEMENTS_PATH="$candidate"
+    break
+  fi
+done
+if [[ -n "$ENTITLEMENTS_PATH" ]] && /usr/bin/codesign --force --sign - --timestamp=none --generate-entitlement-der \
+     --entitlements "$ENTITLEMENTS_PATH" "$STAGED_APP" 2>/dev/null; then
   echo "  re-signed staged app (ad-hoc)"
 else
   echo "  re-sign skipped (CMUX_ALLOW_UNSIGNED_DEV_APP or entitlements missing); dmg may Gatekeeper-warn"

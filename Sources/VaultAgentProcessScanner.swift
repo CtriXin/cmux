@@ -1,5 +1,6 @@
 import Foundation
 import CMUXAgentLaunch
+import CmuxSocketControl
 import SQLite3
 
 /// Tracks fingerprint of latest assistant message per (workspace, panel, session)

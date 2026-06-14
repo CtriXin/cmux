@@ -11526,7 +11526,7 @@ struct VerticalTabsSidebar: View {
         workspace.currentDirectory.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
     }
 
-    private func extensionBrowserStackTooltip(for row: CmuxExtensionSidebarRenderRow) -> String {
+    private func extensionBrowserStackTooltip(for row: CmuxSidebarProviderRow) -> String {
         guard let snapshot = extensionWorkspaceSnapshot(for: row.workspaceId) else {
             return row.title
         }
@@ -11573,7 +11573,7 @@ struct VerticalTabsSidebar: View {
         return row.title
     }
 
-    private func extensionBrowserStackFullPath(from snapshot: CmuxExtensionWorkspaceSnapshot) -> String? {
+    private func extensionBrowserStackFullPath(from snapshot: CmuxSidebarProviderWorkspace) -> String? {
         let rootPath = snapshot.rootPath?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let rootPath, rootPath.hasPrefix("/"), rootPath != "/" {
             return rootPath
@@ -11751,7 +11751,7 @@ struct VerticalTabsSidebar: View {
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity)
         .safeHelp(extensionBrowserStackTooltip(for: row))
-        .opacity(draggedTabId == row.workspaceId ? 0.55 : 1)
+        .opacity(dragState.draggedTabId == row.workspaceId ? 0.55 : 1)
         .onDrag {
             dragState.beginDragging(tabId: row.workspaceId)
             return SidebarTabDragPayload.provider(for: row.workspaceId)
@@ -11830,7 +11830,7 @@ struct VerticalTabsSidebar: View {
         }
         .buttonStyle(.plain)
         .safeHelp(extensionBrowserStackTooltip(for: row))
-        .opacity(draggedTabId == row.workspaceId ? 0.55 : 1)
+        .opacity(dragState.draggedTabId == row.workspaceId ? 0.55 : 1)
         .onDrag {
             dragState.beginDragging(tabId: row.workspaceId)
             return SidebarTabDragPayload.provider(for: row.workspaceId)
@@ -16941,4 +16941,3 @@ enum SidebarPresetOption: String, CaseIterable, Identifiable {
         }
     }
 }
-

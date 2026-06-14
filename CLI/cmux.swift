@@ -5646,8 +5646,12 @@ struct CMUXCLI {
         return .refs
     }
 
-    private func sendV1Command(_ command: String, client: SocketClient) throws -> String {
-        let response = try client.send(command: command)
+    private func sendV1Command(
+        _ command: String,
+        client: SocketClient,
+        responseTimeout: TimeInterval? = nil
+    ) throws -> String {
+        let response = try client.send(command: command, responseTimeout: responseTimeout)
         if response.hasPrefix("ERROR:") {
             throw CLIError(message: response)
         }
@@ -23005,7 +23009,8 @@ struct CMUXCLI {
         key: String,
         lifecycle: AgentHibernationLifecycleState,
         workspaceId: String,
-        surfaceId: String?
+        surfaceId: String?,
+        responseTimeout: TimeInterval? = nil
     ) {
         guard Self.allowedAgentLifecycleStatusKeys.contains(key) else {
             fputs("Warning: unsupported agent lifecycle key\n", stderr)
@@ -23014,7 +23019,8 @@ struct CMUXCLI {
         do {
             _ = try sendV1Command(
                 "set_agent_lifecycle \(key) \(lifecycle.rawValue) --tab=\(workspaceId)\(socketPanelOption(surfaceId))",
-                client: client
+                client: client,
+                responseTimeout: responseTimeout
             )
         } catch {
             fputs("Warning: failed to set agent lifecycle\n", stderr)
@@ -32096,8 +32102,10 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         )
         if source == "codex", hookEventName == "PreToolUse" {
             publishCodexFeedRunningStatus(
-                client: client,
-                workspaceId: feedWorkspaceId(rawObject: stdinObj, fallback: env["CMUX_WORKSPACE_ID"]),
+                existingClient: client,
+                socketPath: socketPath,
+                socketPassword: socketPassword,
+                rawWorkspaceId: feedWorkspaceId(rawObject: stdinObj, fallback: env["CMUX_WORKSPACE_ID"]),
                 surfaceId: env["CMUX_SURFACE_ID"]
             )
         }
@@ -32212,9 +32220,53 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
     }
 
     private func publishCodexFeedRunningStatus(
+        existingClient client: SocketClient?,
+        socketPath: String?,
+        socketPassword: String?,
+        rawWorkspaceId: String?,
+        surfaceId: String?
+    ) {
+        guard let workspaceId = rawWorkspaceId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !workspaceId.isEmpty else {
+            return
+        }
+
+        if let client {
+            publishCodexFeedRunningStatus(
+                client: client,
+                workspaceId: workspaceId,
+                surfaceId: surfaceId
+            )
+            return
+        }
+
+        guard let socketPath else { return }
+        let statusClient = SocketClient(path: socketPath)
+        defer { statusClient.close() }
+        do {
+            try statusClient.connectWithoutRetry(responseTimeout: 0.2)
+            try authenticateClientIfNeeded(
+                statusClient,
+                explicitPassword: socketPassword,
+                socketPath: socketPath,
+                responseTimeout: 0.2
+            )
+            publishCodexFeedRunningStatus(
+                client: statusClient,
+                workspaceId: workspaceId,
+                surfaceId: surfaceId,
+                responseTimeout: 0.2
+            )
+        } catch {
+            return
+        }
+    }
+
+    private func publishCodexFeedRunningStatus(
         client: SocketClient,
         workspaceId rawWorkspaceId: String?,
-        surfaceId: String?
+        surfaceId: String?,
+        responseTimeout: TimeInterval? = nil
     ) {
         guard let workspaceId = rawWorkspaceId?.trimmingCharacters(in: .whitespacesAndNewlines),
               !workspaceId.isEmpty else {
@@ -32222,19 +32274,22 @@ export default function cmuxPiSessionExtension(pi: ExtensionAPI) {
         }
         _ = try? sendV1Command(
             "clear_notifications --tab=\(workspaceId)\(socketPanelOption(surfaceId))",
-            client: client
+            client: client,
+            responseTimeout: responseTimeout
         )
         setAgentLifecycle(
             client: client,
             key: "codex",
             lifecycle: .running,
             workspaceId: workspaceId,
-            surfaceId: surfaceId
+            surfaceId: surfaceId,
+            responseTimeout: responseTimeout
         )
         let runningStatus = String(localized: "agent.generic.status.running", defaultValue: "Running")
         _ = try? sendV1Command(
             "set_status codex \(runningStatus) --icon=bolt.fill --color=#4C8DFF --tab=\(workspaceId)\(socketPanelOption(surfaceId))",
-            client: client
+            client: client,
+            responseTimeout: responseTimeout
         )
     }
 
