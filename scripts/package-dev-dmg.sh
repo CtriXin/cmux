@@ -111,18 +111,19 @@ To run:  open "$APP_BASENAME"
 To follow logs:  tail -f /tmp/cmux-debug-${APP_TAG}.log
 README
 
+# The tagged Debug app's LSEnvironment is generated for its DerivedData path.
+# Keep the tag/socket/port overrides, but let the running app resolve bundled
+# helpers from Bundle.main after the user moves the .app.
+STAGED_PLIST="$STAGED_APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Delete :LSEnvironment:CMUX_BUNDLED_CLI_PATH" "$STAGED_PLIST" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Delete :LSEnvironment:CMUX_SHELL_INTEGRATION_DIR" "$STAGED_PLIST" 2>/dev/null || true
+
 # Re-sign ad-hoc inside the staging copy so Gatekeeper does not complain on
 # double-click; the staged .app was copied and may have lost its signature.
+# Do not inject the release/debug entitlements file here: ad-hoc dev builds
+# with restricted entitlements can verify on disk but be killed by AMFI at launch.
 xattr -cr "$STAGED_APP" 2>/dev/null || true
-ENTITLEMENTS_PATH=""
-for candidate in "$REPO_ROOT/cmux.entitlements" "$REPO_ROOT/Resources/cmux.entitlements"; do
-  if [[ -f "$candidate" ]]; then
-    ENTITLEMENTS_PATH="$candidate"
-    break
-  fi
-done
-if [[ -n "$ENTITLEMENTS_PATH" ]] && /usr/bin/codesign --force --sign - --timestamp=none --generate-entitlement-der \
-     --entitlements "$ENTITLEMENTS_PATH" "$STAGED_APP" 2>/dev/null; then
+if /usr/bin/codesign --force --sign - --timestamp=none --generate-entitlement-der "$STAGED_APP" 2>/dev/null; then
   echo "  re-signed staged app (ad-hoc)"
 else
   echo "  re-sign skipped (CMUX_ALLOW_UNSIGNED_DEV_APP or entitlements missing); dmg may Gatekeeper-warn"
