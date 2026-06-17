@@ -31,7 +31,8 @@ extension SessionIndexStore {
                 pullRequest: nil,
                 modified: session.modified,
                 fileURL: session.sessionContextURL,
-                specifics: .rovodev
+                specifics: .rovodev,
+                hasUpstreamError: session.sessionContextURL.map { fileHasUpstreamErrorSignal(url: $0) } ?? false
             )
         }
     }

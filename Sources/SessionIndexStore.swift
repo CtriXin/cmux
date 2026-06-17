@@ -1,3 +1,4 @@
+import CmuxFoundation
 import AppKit
 import Bonsplit
 import CMUXAgentLaunch
@@ -650,6 +651,72 @@ final class SessionIndexStore: ObservableObject {
     nonisolated static let tailByteCap = 32 * 1024
     /// Hard cap on candidate files inspected per call to keep deep-page searches bounded.
     nonisolated static let searchMaxFiles = 1500
+
+    nonisolated static func hasUpstreamErrorSignal(in text: String) -> Bool {
+        let lower = text.lowercased()
+        let directSignals = [
+            "too many requests",
+            "rate limit",
+            "rate_limit",
+            "forbidden",
+            "internal server error",
+            "bad gateway",
+            "gateway timeout",
+            "service unavailable",
+            "upstream error",
+            "provider error",
+            "server error",
+            "something went wrong",
+        ]
+        if directSignals.contains(where: { lower.contains($0) }) {
+            return true
+        }
+        if lower.contains("requestid") && lower.contains("error") {
+            return true
+        }
+
+        guard let regex = try? NSRegularExpression(pattern: #"\b(429|403|5[0-9]{2})\b"#) else {
+            return false
+        }
+        let nsText = lower as NSString
+        let fullRange = NSRange(location: 0, length: nsText.length)
+        let contextSignals = [
+            "http",
+            "status",
+            "response",
+            "request",
+            "error",
+            "failed",
+            "failure",
+            "forbidden",
+            "rate",
+            "limit",
+            "quota",
+            "server",
+            "provider",
+            "upstream",
+            "anthropic",
+            "openai",
+            "gemini",
+            "claude",
+            "opencode",
+            "codex",
+        ]
+        for match in regex.matches(in: lower, range: fullRange) {
+            let start = max(0, match.range.location - 80)
+            let end = min(nsText.length, match.range.location + match.range.length + 80)
+            let window = nsText.substring(with: NSRange(location: start, length: end - start))
+            if contextSignals.contains(where: { window.contains($0) }) {
+                return true
+            }
+        }
+        return false
+    }
+
+    nonisolated static func fileHasUpstreamErrorSignal(url: URL) -> Bool {
+        let tail = readFileTail(url: url, byteCap: max(tailByteCap, 128 * 1024))
+        return hasUpstreamErrorSignal(in: tail)
+    }
 
     private static func scanAll() async -> [SessionEntry] {
         // Initial scan errors are silently ignored — UI just shows the cached
@@ -1361,7 +1428,7 @@ final class SessionIndexStore: ObservableObject {
             // terminationStatus observable. (Setting terminationHandler here
             // would race: if rg already exited, the handler is registered too
             // late and never fires → deadlock.)
-            let data = ProcessPipeReader.readDataToEndOfFileOrEmpty(from: outPipe.fileHandleForReading)
+            let data = outPipe.fileHandleForReading.readDataToEndOfFileOrEmpty()
             process.waitUntilExit()
             cancellation.markFinished(processIdentifier: process.processIdentifier)
             if Task.isCancelled { return [] }
@@ -1506,6 +1573,7 @@ final class SessionIndexStore: ObservableObject {
                     let parsed = extractClaudeMetadata(head: head, tail: tail, projectDir: candidate.dirName)
                     if let cwdFilter, parsed.cwd != cwdFilter { return (idx, nil, false) }
                     let sid = candidate.url.deletingPathExtension().lastPathComponent
+                    let hasUpstreamError = hasUpstreamErrorSignal(in: head + "\n" + tail)
                     let entry = SessionEntry(
                         id: "claude:" + candidate.url.path,
                         agent: .claude,
@@ -1520,7 +1588,8 @@ final class SessionIndexStore: ObservableObject {
                             model: parsed.model,
                             permissionMode: parsed.permissionMode,
                             configDirectoryForResume: candidate.resumeConfigDirectory
-                        )
+                        ),
+                        hasUpstreamError: hasUpstreamError
                     )
                     if needle.isEmpty {
                         ClaudeMetadataCache.shared.put(
@@ -1635,6 +1704,7 @@ final class SessionIndexStore: ObservableObject {
             }
             let parsed = extractCodexMetadata(url: url)
             if let cwdFilter, parsed.cwd != cwdFilter { continue }
+            let hasUpstreamError = fileHasUpstreamErrorSignal(url: url)
             matches.append(SessionEntry(
                 id: "codex:" + url.path,
                 agent: .codex,
@@ -1650,7 +1720,8 @@ final class SessionIndexStore: ObservableObject {
                     approvalPolicy: parsed.approvalPolicy,
                     sandboxMode: parsed.sandboxMode,
                     effort: parsed.effort
-                )
+                ),
+                hasUpstreamError: hasUpstreamError
             ))
         }
         return Array(matches.dropFirst(offset).prefix(limit))
@@ -1693,7 +1764,13 @@ final class SessionIndexStore: ObservableObject {
                 SELECT data FROM message
                 WHERE session_id = s.id AND data LIKE '%"role":"assistant"%'
                 ORDER BY time_created DESC LIMIT 1
-            ) AS last_assistant
+            ) AS last_assistant, (
+                SELECT p.data FROM message m
+                JOIN part p ON p.message_id = m.id
+                WHERE m.session_id = s.id
+                ORDER BY m.time_created DESC, m.id DESC, p.time_created DESC, p.id DESC
+                LIMIT 1
+            ) AS last_part
             FROM session s
             """
         var conditions: [String] = []
@@ -1735,7 +1812,12 @@ final class SessionIndexStore: ObservableObject {
             let updatedMs = sqlite3_column_int64(stmt, 3)
             let modified = Date(timeIntervalSince1970: TimeInterval(updatedMs) / 1000.0)
             let lastJSON = sqliteText(stmt, 4)
+            let lastPartJSON = sqliteText(stmt, 5)
             let (providerModel, agentName) = parseOpenCodeAssistant(lastJSON)
+            let hasUpstreamErrorText = [lastJSON, lastPartJSON]
+                .compactMap { $0 }
+                .joined(separator: "\n")
+            let hasUpstreamError = hasUpstreamErrorSignal(in: hasUpstreamErrorText)
             results.append(SessionEntry(
                 id: "opencode:" + sid,
                 agent: .opencode,
@@ -1746,7 +1828,8 @@ final class SessionIndexStore: ObservableObject {
                 pullRequest: nil,
                 modified: modified,
                 fileURL: nil,
-                specifics: .opencode(providerModel: providerModel, agentName: agentName)
+                specifics: .opencode(providerModel: providerModel, agentName: agentName),
+                hasUpstreamError: hasUpstreamError
             ))
         }
         return results

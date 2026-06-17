@@ -5,10 +5,10 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 CI_FILE="$ROOT_DIR/.github/workflows/ci.yml"
 RELEASE_FILE="$ROOT_DIR/.github/workflows/release.yml"
 
-# nightly.yml is intentionally not covered here. It builds the macOS 26 SDK app
-# with its own inline helper-build model (PR #5077) and self-guards via its
-# "Select Xcode" loud-fail and "Verify nightly binary architectures" steps.
-# This lane guards the release/CI artifact-download model added by this change.
+# nightly.yml is intentionally not covered here. It has its own helper-build
+# model and guards via test_ci_nightly_xcode_selection.sh plus
+# test_nightly_universal_build.sh. This lane guards the release/CI
+# artifact-download model.
 
 job_section() {
   local file="$1" job="$2"
@@ -39,7 +39,7 @@ require_job_contains \
   "$RELEASE_FILE" \
   "build-sign-notarize" \
   'runs-on: ${{ vars.MACOS_RUNNER_26 || '\''warp-macos-26-arm64-6x'\'' }}' \
-  "release must build the app on macOS 26"
+  "release must sign+notarize on the macOS 26 runner variable after importing the Developer ID intermediate chain"
 
 require_job_contains \
   "$CI_FILE" \

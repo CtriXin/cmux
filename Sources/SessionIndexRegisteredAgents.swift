@@ -360,7 +360,8 @@ extension SessionIndexStore {
                 pullRequest: nil,
                 modified: candidate.modified,
                 fileURL: candidate.url,
-                specifics: specifics
+                specifics: specifics,
+                hasUpstreamError: fileHasUpstreamErrorSignal(url: candidate.url)
             ))
         }
         return Array(matches.dropFirst(offset).prefix(limit))
@@ -457,7 +458,8 @@ extension SessionIndexStore {
                 pullRequest: nil,
                 modified: candidate.modified,
                 fileURL: candidate.url,
-                specifics: .registered(registration)
+                specifics: .registered(registration),
+                hasUpstreamError: fileHasUpstreamErrorSignal(url: candidate.url)
             ))
         }
         return Array(matches.dropFirst(offset).prefix(limit))
@@ -543,7 +545,8 @@ extension SessionIndexStore {
                     pullRequest: nil,
                     modified: metadata.modified,
                     fileURL: metadata.fileURL,
-                    specifics: .registered(registration)
+                    specifics: .registered(registration),
+                    hasUpstreamError: fileHasUpstreamErrorSignal(url: metadata.fileURL)
                 )
             }
         return Array(entries.dropFirst(offset).prefix(limit))

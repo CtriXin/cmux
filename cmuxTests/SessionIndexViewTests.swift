@@ -82,7 +82,7 @@ final class SessionIndexViewTests: XCTestCase {
 
         XCTAssertEqual(
             entry.resumeCommand,
-            "env CLAUDE_CONFIG_DIR='\(configDir.path)' CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV=1 CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV_KEYS=CLAUDE_CONFIG_DIR claude --resume claude-session-123"
+            posixShWrappedForTest("env CLAUDE_CONFIG_DIR='\(configDir.path)' CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV=1 CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV_KEYS=CLAUDE_CONFIG_DIR \"$([ -x \"${CMUX_CLAUDE_WRAPPER_SHIM:-}\" ] && printf '%s' \"$CMUX_CLAUDE_WRAPPER_SHIM\" || printf claude)\" --resume claude-session-123")
         )
     }
 
@@ -114,8 +114,31 @@ final class SessionIndexViewTests: XCTestCase {
 
         XCTAssertEqual(
             entry.resumeCommand,
-            "env CLAUDE_CONFIG_DIR='\(configDir.path)' CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV=1 CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV_KEYS=CLAUDE_CONFIG_DIR claude --resume claude-session-123"
+            posixShWrappedForTest("env CLAUDE_CONFIG_DIR='\(configDir.path)' CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV=1 CMUX_PRESERVE_CLAUDE_AUTH_SELECTION_ENV_KEYS=CLAUDE_CONFIG_DIR \"$([ -x \"${CMUX_CLAUDE_WRAPPER_SHIM:-}\" ] && printf '%s' \"$CMUX_CLAUDE_WRAPPER_SHIM\" || printf claude)\" --resume claude-session-123")
         )
+    }
+
+    func testClaudeConfigDirectoryPreservesUpstreamErrorMarker() {
+        let entry = makeEntry(
+            title: "resume me",
+            claudeConfigDirectoryForResume: nil,
+            hasUpstreamError: true
+        )
+
+        XCTAssertTrue(
+            entry.withClaudeConfigDirectoryForResume("/tmp/claude-config").hasUpstreamError
+        )
+    }
+
+    func testUpstreamErrorSignalDetectsProviderStatusFailures() {
+        XCTAssertTrue(SessionIndexStore.hasUpstreamErrorSignal(in: #"{"error":"Internal Server Error","message":"Something went wrong","requestId":"abc"}"#))
+        XCTAssertTrue(SessionIndexStore.hasUpstreamErrorSignal(in: "provider response failed with HTTP 429 Too Many Requests"))
+        XCTAssertTrue(SessionIndexStore.hasUpstreamErrorSignal(in: "upstream returned status 403 Forbidden"))
+        XCTAssertTrue(SessionIndexStore.hasUpstreamErrorSignal(in: "OpenCode provider error 503"))
+    }
+
+    func testUpstreamErrorSignalIgnoresBareStatusLikeNumbers() {
+        XCTAssertFalse(SessionIndexStore.hasUpstreamErrorSignal(in: "Edit issue #503 and line 429 in the docs."))
     }
 
     func testGrokResumeCommandPreservesSpecifics() {
@@ -341,6 +364,42 @@ final class SessionIndexViewTests: XCTestCase {
         XCTAssertEqual(outcome.entries.map(\.sessionId), ["codex-transcript-match"])
     }
 
+    func testCodexSQLMarksUpstreamErrorFromRolloutTail() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmux-session-index-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let sessionsRoot = tempDir.appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsRoot, withIntermediateDirectories: true)
+
+        let rolloutURL = sessionsRoot.appendingPathComponent("rollout-codex-upstream-error.jsonl")
+        let transcript = """
+        {"timestamp":"2026-05-01T09:00:00.000Z","type":"session_meta","payload":{"id":"codex-upstream-error","cwd":"/tmp/project"}}
+        {"timestamp":"2026-05-01T09:02:00.000Z","type":"event_msg","payload":{"type":"agent_message","message":"Provider response failed with HTTP 429 Too Many Requests"}}
+        """
+        try transcript.write(to: rolloutURL, atomically: true, encoding: .utf8)
+
+        let stateDB = tempDir.appendingPathComponent("state_5.sqlite")
+        try makeCodexStateDatabase(
+            at: stateDB,
+            rolloutURL: rolloutURL,
+            sessionId: "codex-upstream-error"
+        )
+
+        let outcome = await SessionIndexStore.loadCodexEntriesForTesting(
+            stateDBPath: stateDB.path,
+            needle: "",
+            offset: 0,
+            limit: 10,
+            sessionsRoot: sessionsRoot.path
+        )
+
+        XCTAssertEqual(outcome.errors, [])
+        XCTAssertEqual(outcome.entries.map(\.sessionId), ["codex-upstream-error"])
+        XCTAssertEqual(outcome.entries.first?.hasUpstreamError, true)
+    }
+
     func testSectionPopoverHostCoordinatorSkipsHiddenRefreshes() {
         let harness = makeHarness()
         let coordinator = harness.host.makeCoordinator()
@@ -445,7 +504,8 @@ final class SessionIndexViewTests: XCTestCase {
         modified: Date = Date(timeIntervalSince1970: 0),
         fileURL: URL? = nil,
         specifics: AgentSpecifics? = nil,
-        claudeConfigDirectoryForResume: String? = nil
+        claudeConfigDirectoryForResume: String? = nil,
+        hasUpstreamError: Bool = false
     ) -> SessionEntry {
         SessionEntry(
             id: UUID().uuidString,
@@ -459,7 +519,8 @@ final class SessionIndexViewTests: XCTestCase {
             fileURL: fileURL,
             specifics: specifics ?? agent.defaultSpecificsForTesting(
                 claudeConfigDirectoryForResume: claudeConfigDirectoryForResume
-            )
+            ),
+            hasUpstreamError: hasUpstreamError
         )
     }
 
@@ -562,6 +623,13 @@ final class SessionIndexViewTests: XCTestCase {
     private func sqliteMessage(_ db: OpaquePointer) -> String? {
         guard let cString = sqlite3_errmsg(db) else { return nil }
         return String(cString: cString)
+    }
+
+    /// Mirrors `AgentResumeArgv.portableClaudeResumeShellCommand`: the rendered claude
+    /// resume command is wrapped as `/bin/sh -c '…'` so it parses in non-POSIX shells
+    /// (fish/csh/tcsh). https://github.com/manaflow-ai/cmux/issues/5639
+    private func posixShWrappedForTest(_ posixCommand: String) -> String {
+        "/bin/sh -c '" + posixCommand.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 }
 

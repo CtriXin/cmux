@@ -1,5 +1,6 @@
 import AppKit
 import Bonsplit
+import CmuxAppKitSupportUI
 import CMUXAgentVault
 import SQLite3
 import SwiftUI
@@ -628,6 +629,9 @@ private struct SessionRow: View, Equatable {
     private var rowBackground: some View {
         RoundedRectangle(cornerRadius: 4, style: .continuous)
             .fill(rowBackgroundColor)
+            .overlay {
+                upstreamErrorRowStroke(isVisible: entry.hasUpstreamError)
+            }
             .padding(.horizontal, 6)
     }
 
@@ -660,6 +664,14 @@ private struct SessionRow: View, Equatable {
 }
 
 // MARK: - Shared row actions
+
+@ViewBuilder
+private func upstreamErrorRowStroke(isVisible: Bool) -> some View {
+    if isVisible {
+        RoundedRectangle(cornerRadius: 4, style: .continuous)
+            .stroke(Color.red.opacity(0.85), lineWidth: 1)
+    }
+}
 
 /// Right-click menu items for any session row (full or popover). Built as a
 /// free `@ViewBuilder` so SessionRow and PopoverRow both attach the same set
@@ -1069,6 +1081,12 @@ private enum SessionTranscriptLoader {
     private static let maxTurnTextCharacters = 40_000
     private static let newlineByte: UInt8 = 10
 
+    // Wrapping `Data(string.utf8)` in a helper keeps large needle array literals
+    // cheap to type-check. The Xcode 27 / Swift 6.4 expression solver otherwise
+    // times out on the bigger literals below ("unable to type-check this
+    // expression in reasonable time"), which Xcode 26 tolerated.
+    private static func needle(_ string: String) -> Data { Data(string.utf8) }
+
     private static let claudeUserNeedles = [
         Data(#""type":"user""#.utf8),
         Data(#""type": "user""#.utf8),
@@ -1116,30 +1134,30 @@ private enum SessionTranscriptLoader {
         Data(#""type": "developer""#.utf8)
     ]
     private static let grokToolRoleNeedles = [
-        Data(#""role":"tool""#.utf8),
-        Data(#""role": "tool""#.utf8),
-        Data(#""role":"tool_use""#.utf8),
-        Data(#""role": "tool_use""#.utf8),
-        Data(#""role":"tool_result""#.utf8),
-        Data(#""role": "tool_result""#.utf8),
-        Data(#""role":"function_call""#.utf8),
-        Data(#""role": "function_call""#.utf8),
-        Data(#""role":"function_call_output""#.utf8),
-        Data(#""role": "function_call_output""#.utf8),
-        Data(#""type":"tool""#.utf8),
-        Data(#""type": "tool""#.utf8),
-        Data(#""type":"tool_use""#.utf8),
-        Data(#""type": "tool_use""#.utf8),
-        Data(#""type":"tool_result""#.utf8),
-        Data(#""type": "tool_result""#.utf8),
-        Data(#""type":"function_call""#.utf8),
-        Data(#""type": "function_call""#.utf8),
-        Data(#""type":"function_call_output""#.utf8),
-        Data(#""type": "function_call_output""#.utf8)
+        needle(#""role":"tool""#),
+        needle(#""role": "tool""#),
+        needle(#""role":"tool_use""#),
+        needle(#""role": "tool_use""#),
+        needle(#""role":"tool_result""#),
+        needle(#""role": "tool_result""#),
+        needle(#""role":"function_call""#),
+        needle(#""role": "function_call""#),
+        needle(#""role":"function_call_output""#),
+        needle(#""role": "function_call_output""#),
+        needle(#""type":"tool""#),
+        needle(#""type": "tool""#),
+        needle(#""type":"tool_use""#),
+        needle(#""type": "tool_use""#),
+        needle(#""type":"tool_result""#),
+        needle(#""type": "tool_result""#),
+        needle(#""type":"function_call""#),
+        needle(#""type": "function_call""#),
+        needle(#""type":"function_call_output""#),
+        needle(#""type": "function_call_output""#)
     ]
     private static let grokRoleNeedles = [
-        Data(#""role":"#.utf8),
-        Data(#""role": "#.utf8)
+        needle(#""role":"#),
+        needle(#""role": "#)
     ]
         + grokAssistantRoleNeedles
         + grokUserRoleNeedles
@@ -2506,7 +2524,7 @@ private struct PopoverRow: View, Equatable {
         .padding(.vertical, 5)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .background(isHovered ? Color.primary.opacity(0.06) : Color.clear)
+        .background(rowBackground)
         .onHover { isHovered = $0 }
         .onTapGesture(count: 2) { onActivate() }
         .onDrag {
@@ -2516,6 +2534,15 @@ private struct PopoverRow: View, Equatable {
         .contextMenu {
             sessionRowMenuItems(entry: entry, onResume: { _ in onActivate() })
         }
+    }
+
+    private var rowBackground: some View {
+        RoundedRectangle(cornerRadius: 4, style: .continuous)
+            .fill(isHovered ? Color.primary.opacity(0.06) : Color.clear)
+            .overlay {
+                upstreamErrorRowStroke(isVisible: entry.hasUpstreamError)
+            }
+            .padding(.horizontal, 6)
     }
 }
 

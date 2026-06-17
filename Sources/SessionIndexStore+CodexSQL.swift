@@ -171,6 +171,7 @@ extension SessionIndexStore {
         }
 
         let fileURL = record.normalizedRolloutPath.map { URL(fileURLWithPath: $0) }
+        let hasUpstreamError = fileURL.map { fileHasUpstreamErrorSignal(url: $0) } ?? false
         return SessionEntry(
             id: "codex:" + (fileURL?.path ?? record.sessionId),
             agent: .codex,
@@ -186,7 +187,8 @@ extension SessionIndexStore {
                 approvalPolicy: record.approvalMode?.isEmpty == false ? record.approvalMode : nil,
                 sandboxMode: sandboxMode,
                 effort: record.reasoningEffort?.isEmpty == false ? record.reasoningEffort : nil
-            )
+            ),
+            hasUpstreamError: hasUpstreamError
         )
     }
 
