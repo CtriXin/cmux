@@ -70,28 +70,21 @@ tail -f /tmp/cmux-debug-<tag>.log
 
 ## Pulling new release features into the local DEV
 
-The local repo's `main` branch is the source of truth for upstream. The
-checked-out work branch is where you do your own work.
+For the full local-patch replay workflow, use
+[`docs/local-upstream-sync.md`](local-upstream-sync.md). The short version is:
+keep upstream as the base, replay only the local fix inventory, then run
+`scripts/check-local-upstream-sync.sh origin/main` before handing off a build.
 
 ```bash
-# Sync main with upstream's latest.
-git fetch origin
-git rebase origin/main             # or: git pull --rebase origin main
+# Fetch the true latest upstream.
+git fetch origin +main:refs/remotes/origin/main --tags
 
-# Cherry-pick a specific upstream feature into your work branch.
-git cherry-pick <commit-sha>
+# Audit that the local CtriXin fix stack survived the sync.
+./scripts/check-local-upstream-sync.sh origin/main
 
-# Rebuild DEV with the new commit included.
+# Rebuild and package DEV with the synced commit included.
 ./scripts/reload.sh --tag <short-name>
 ./scripts/package-dev-dmg.sh --tag <short-name>
-```
-
-For multi-commit features:
-
-```bash
-git fetch origin
-git log --oneline origin/main ^HEAD   # see what's new
-git cherry-pick <sha1> <sha2> <sha3>
 ```
 
 ## Tracked files
@@ -100,6 +93,10 @@ git cherry-pick <sha1> <sha2> <sha3>
   `~/Downloads/cmux-dev/`.
 - `scripts/package-dev-dmg.sh` — wraps a `.app` into a draggable `.dmg` in
   `~/Downloads/`.
+- `scripts/check-local-upstream-sync.sh` — audits the local patch inventory
+  after upstream moves.
+- `docs/local-upstream-sync.md` — durable sync checklist and local-fix
+  inventory.
 - `Sources/Update/UpdateController.swift`,
   `Sources/Update/UpdateDelegate.swift` — DEV builds skip the launch + hourly
   background Sparkle probe and the `didFindValidUpdate` -> sidebar pill path,

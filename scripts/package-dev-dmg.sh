@@ -114,11 +114,15 @@ README
 # Re-sign ad-hoc inside the staging copy so Gatekeeper does not complain on
 # double-click; the staged .app was copied and may have lost its signature.
 xattr -cr "$STAGED_APP" 2>/dev/null || true
+ENTITLEMENTS_PATH="$REPO_ROOT/cmux.entitlements"
+if [[ ! -f "$ENTITLEMENTS_PATH" ]]; then
+  ENTITLEMENTS_PATH="$REPO_ROOT/Resources/cmux.entitlements"
+fi
 if /usr/bin/codesign --force --sign - --timestamp=none --generate-entitlement-der \
-     --entitlements "$REPO_ROOT/cmux/cmux.entitlements" "$STAGED_APP" 2>/dev/null; then
+     --entitlements "$ENTITLEMENTS_PATH" "$STAGED_APP" 2>/dev/null; then
   echo "  re-signed staged app (ad-hoc)"
 else
-  echo "  re-sign skipped (CMUX_ALLOW_UNSIGNED_DEV_APP or entitlements missing); dmg may Gatekeeper-warn"
+  echo "  re-sign skipped (codesign or entitlements failed); dmg may Gatekeeper-warn"
 fi
 
 # Build the dmg with hdiutil. UDRO is read-only; we want read-only so the
