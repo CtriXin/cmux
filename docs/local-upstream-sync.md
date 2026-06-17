@@ -13,7 +13,8 @@ Every sync should end with:
 - A small, reviewable `origin/main..HEAD` delta containing only local CtriXin
   behavior.
 - The local fix inventory audited by `scripts/check-local-upstream-sync.sh`.
-- A tagged DEV build and, when handing off to a user, a DEV `.dmg`.
+- A tagged DEV build and a DEV `.dmg` for user handoff. App links alone are not
+  a complete handoff.
 
 ## Current local fix inventory
 
@@ -91,6 +92,9 @@ that variable.
 
 ## Handoff
 
+When handing off to Xin after a sync, always provide the DEV `.dmg`. Do not stop
+at the `reload.sh` app link unless the user explicitly says no dmg is needed.
+
 Record:
 
 - latest upstream SHA;
@@ -98,7 +102,10 @@ Record:
 - `git diff --shortstat origin/main..HEAD`;
 - commands run and pass/fail status;
 - tagged app path from `reload.sh`;
-- dmg path from `package-dev-dmg.sh`.
+- dmg path from `package-dev-dmg.sh`;
+- `hdiutil verify` result for the dmg;
+- dmg size and SHA-256 checksum;
+- a clickable `file://` link to the dmg.
 
 Use Codex app links from the exact `App path:` printed by `reload.sh`; never
 invent `/tmp/cmux-<tag>/...` links.

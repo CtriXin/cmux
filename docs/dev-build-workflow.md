@@ -37,6 +37,11 @@ release's new features — without ever touching `/Applications/cmux.app`.
 The dmg is read-only, contains an `Applications` symlink, and a `README.txt`
 that warns the user not to drag the .app into `/Applications`.
 
+For user handoff, the `.dmg` is required. Provide the dmg path, a clickable
+`file://` link, `hdiutil verify` result, file size, and SHA-256 checksum. A
+`reload.sh` `.app` link by itself is only a developer convenience, not a complete
+handoff artifact.
+
 ## Mirror
 
 `reload.sh` mirrors the tag build's `.app` to `~/Downloads/cmux-dev/`. This
@@ -85,6 +90,8 @@ git fetch origin +main:refs/remotes/origin/main --tags
 # Rebuild and package DEV with the synced commit included.
 ./scripts/reload.sh --tag <short-name>
 ./scripts/package-dev-dmg.sh --tag <short-name>
+hdiutil verify ~/Downloads/cmux-dev-<short-name>*.dmg
+shasum -a 256 ~/Downloads/cmux-dev-<short-name>*.dmg
 ```
 
 ## Tracked files
